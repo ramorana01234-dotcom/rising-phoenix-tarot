@@ -306,18 +306,33 @@ export default function TarotBookingWebsite() {
     setAdminDate(dateKey);
   };
 
-  const addAvailableTime = () => {
+  const addAvailableTime = async () => {
     if (!adminDate || !adminTime) return;
+
     const currentTimes = availableSlots[adminDate] || DEFAULT_DAY_TIMES;
     const updatedTimes = Array.from(new Set([...currentTimes, adminTime])).sort();
-    const updatedBusySlots = manualBusySlots.filter((slot) => slot !== `${adminDate}-${adminTime}`);
+    const slotToFree = `${adminDate}-${adminTime}`;
+    const updatedBusySlots = manualBusySlots.filter((slot) => slot !== slotToFree);
+    const updatedPaidSlots = paidBookedSlots.filter((slot) => slot !== slotToFree);
     const dayBusyTimes = updatedBusySlots
       .filter((slot) => slot.startsWith(`${adminDate}-`))
       .map((slot) => slot.replace(`${adminDate}-`, ""));
 
+    const { error: deleteBookingError } = await supabase
+      .from("bookings")
+      .delete()
+      .eq("date", adminDate)
+      .eq("time", adminTime);
+
+    if (deleteBookingError) {
+      alert(`Could not remove booking from this slot: ${deleteBookingError.message}`);
+      return;
+    }
+
     setNotWorkingDays((days) => days.filter((day) => day !== adminDate));
     setAvailableSlots((slots) => ({ ...slots, [adminDate]: updatedTimes }));
     setManualBusySlots(updatedBusySlots);
+    setPaidBookedSlots(updatedPaidSlots);
     saveScheduleOverride(adminDate, updatedTimes, dayBusyTimes, false);
   };
 
@@ -351,9 +366,22 @@ export default function TarotBookingWebsite() {
     saveScheduleOverride(adminDate, times, times, false);
   };
 
-  const clearDay = () => {
+  const clearDay = async () => {
     const updatedBusySlots = manualBusySlots.filter((slot) => !slot.startsWith(`${adminDate}-`));
+    const updatedPaidSlots = paidBookedSlots.filter((slot) => !slot.startsWith(`${adminDate}-`));
+
+    const { error: deleteBookingsError } = await supabase
+      .from("bookings")
+      .delete()
+      .eq("date", adminDate);
+
+    if (deleteBookingsError) {
+      alert(`Could not clear paid bookings for this day: ${deleteBookingsError.message}`);
+      return;
+    }
+
     setManualBusySlots(updatedBusySlots);
+    setPaidBookedSlots(updatedPaidSlots);
     setNotWorkingDays((days) => days.filter((day) => day !== adminDate));
     setAvailableSlots((slots) => ({ ...slots, [adminDate]: DEFAULT_DAY_TIMES }));
     saveScheduleOverride(adminDate, DEFAULT_DAY_TIMES, [], false);
@@ -419,11 +447,11 @@ export default function TarotBookingWebsite() {
 
       <div className="rounded-3xl bg-white/10 p-3">
         <div className="mb-3 flex items-center justify-between">
-          <button onClick={() => changeMonth(-1)} className="rounded-full bg-[#1f1133] p-2 hover:bg-white/20">
+          <button onClick={() => changeMonth(-1)} className="rounded-full bg-[#1f1133] p-2 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/20 active:translate-y-0 active:scale-90">
             <ChevronLeft className="h-4 w-4" />
           </button>
           <h3 className="text-sm font-semibold">{monthName}</h3>
-          <button onClick={() => changeMonth(1)} className="rounded-full bg-[#1f1133] p-2 hover:bg-white/20">
+          <button onClick={() => changeMonth(1)} className="rounded-full bg-[#1f1133] p-2 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/20 active:translate-y-0 active:scale-90">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
@@ -452,7 +480,7 @@ export default function TarotBookingWebsite() {
               <button
                 key={dateKey}
                 onClick={() => selectDate(dateKey)}
-                className={`aspect-square rounded-xl text-xs font-semibold transition ${dayClass}`}
+                className={`aspect-square rounded-xl text-xs font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-90 ${dayClass}`}
               >
                 {day.getDate()}
               </button>
@@ -477,7 +505,7 @@ export default function TarotBookingWebsite() {
                 setBooking({ ...booking, time });
                 setPaymentComplete(WHATSAPP_TEST_MODE);
               }}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${timeClass}`}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 ${timeClass}`}
             >
               {time}{booked ? " Busy" : ""}
             </button>
@@ -524,7 +552,7 @@ export default function TarotBookingWebsite() {
                       setPaymentComplete(WHATSAPP_TEST_MODE);
                       setShowPayPalCheckout(false);
                     }}
-                    className={`rounded-2xl border p-4 text-left ${selected ? "border-purple-300 bg-purple-300/20" : "border-white/10 bg-white/10"}`}
+                    className={`rounded-2xl border p-4 text-left shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-purple-400/20 active:translate-y-0 active:scale-[0.98] ${selected ? "border-purple-300 bg-purple-300/20" : "border-white/10 bg-white/10"}`}
                   >
                     <Clock className="mb-3 h-5 w-5 text-purple-300" />
                     <h3 className="text-sm font-semibold">{service.duration}</h3>
@@ -616,8 +644,8 @@ export default function TarotBookingWebsite() {
                   type="button"
                   onClick={() => setShowPayPalCheckout(true)}
                   disabled={isSlotAlreadyBooked}
-                  className={`rounded-full px-5 py-3 text-center text-sm font-bold text-[#12091f] shadow-xl ${
-                    isSlotAlreadyBooked ? "cursor-not-allowed bg-gray-400" : "bg-purple-400 hover:bg-purple-300"
+                  className={`rounded-full px-5 py-3 text-center text-sm font-bold text-[#12091f] shadow-xl transition-all duration-200 ${
+                    isSlotAlreadyBooked ? "cursor-not-allowed bg-gray-400" : "bg-purple-400 hover:-translate-y-0.5 hover:bg-purple-300 hover:shadow-purple-400/30 active:translate-y-0 active:scale-95"
                   }`}
                 >
                   Load secure PayPal checkout
@@ -628,7 +656,7 @@ export default function TarotBookingWebsite() {
                   href={paymentComplete ? whatsappBookingUrl : undefined}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-center text-sm font-bold text-white transition ${paymentComplete ? "bg-green-500 hover:bg-green-400" : "cursor-not-allowed bg-gray-500/60 opacity-70 pointer-events-none"}`}
+                  className={`flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-center text-sm font-bold text-white shadow-lg transition-all duration-200 ${paymentComplete ? "bg-green-500 hover:-translate-y-0.5 hover:bg-green-400 hover:shadow-green-400/30 active:translate-y-0 active:scale-95" : "cursor-not-allowed bg-gray-500/60 opacity-70 pointer-events-none"}`}
                 >
                   <MessageCircle className="h-4 w-4" />
                   {paymentComplete ? "Send booking on WhatsApp" : "Complete payment to unlock WhatsApp"}
@@ -676,7 +704,7 @@ export default function TarotBookingWebsite() {
           <button
             type="button"
             onClick={submitForumQuestion}
-            className="rounded-full bg-purple-400 px-5 py-3 text-center text-sm font-bold text-[#12091f] hover:bg-purple-300"
+            className="rounded-full bg-purple-400 px-5 py-3 text-center text-sm font-bold text-[#12091f] shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-purple-300 hover:shadow-purple-400/30 active:translate-y-0 active:scale-95"
           >
             Post Question
           </button>
@@ -704,7 +732,7 @@ export default function TarotBookingWebsite() {
                 </div>
                 <button
                   onClick={() => deleteForumQuestion(item.id)}
-                  className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-purple-100 hover:bg-white/10"
+                  className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-purple-100 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/10 active:translate-y-0 active:scale-95"
                 >
                   Delete
                 </button>
@@ -728,7 +756,7 @@ export default function TarotBookingWebsite() {
                   />
                   <button
                     onClick={() => saveForumReply(item.id)}
-                    className="rounded-full bg-purple-400 px-4 py-2 text-sm font-bold text-[#12091f] hover:bg-purple-300"
+                    className="rounded-full bg-purple-400 px-4 py-2 text-sm font-bold text-[#12091f] shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-purple-300 hover:shadow-purple-400/30 active:translate-y-0 active:scale-95"
                   >
                     Post Reply
                   </button>
@@ -778,7 +806,7 @@ export default function TarotBookingWebsite() {
                 <button
                   key={item}
                   onClick={() => setActiveSlide(index)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition md:px-4 ${isActive ? "bg-purple-300 text-[#12091f]" : "text-purple-100 hover:bg-white/10"}`}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all duration-200 md:px-4 ${isActive ? "bg-purple-300 text-[#12091f] shadow-md" : "text-purple-100 hover:-translate-y-0.5 hover:bg-white/10 active:translate-y-0 active:scale-95"}`}
                 >
                   {item}
                 </button>
@@ -797,7 +825,7 @@ export default function TarotBookingWebsite() {
             </div>
             <button
               onClick={() => setShowAdmin(false)}
-              className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#12091f]"
+              className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#12091f] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
             >
               Close
             </button>
@@ -815,10 +843,10 @@ export default function TarotBookingWebsite() {
               onChange={(event) => setAdminTime(event.target.value)}
               className="rounded-2xl border border-white/10 bg-[#12091f] px-3 py-2 text-sm outline-none"
             />
-            <button onClick={markSelectedTimeBusy} className="rounded-2xl bg-black px-3 py-2 text-sm font-bold text-white">
+            <button onClick={markSelectedTimeBusy} className="rounded-2xl bg-black px-3 py-2 text-sm font-bold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-black/80 active:translate-y-0 active:scale-95">
               Mark Time Busy
             </button>
-            <button onClick={addAvailableTime} className="rounded-2xl bg-green-500 px-3 py-2 text-sm font-bold text-black">
+            <button onClick={addAvailableTime} className="rounded-2xl bg-green-500 px-3 py-2 text-sm font-bold text-black transition-all duration-200 hover:-translate-y-0.5 hover:bg-green-400 active:translate-y-0 active:scale-95">
               Mark Time Available
             </button>
           </div>
@@ -830,7 +858,7 @@ export default function TarotBookingWebsite() {
                 <button
                   key={time}
                   onClick={() => setAdminTime(time)}
-                  className={`rounded-full px-3 py-1.5 text-xs ${busy ? "bg-black text-white line-through" : "bg-green-500 text-black"}`}
+                  className={`rounded-full px-3 py-1.5 text-xs shadow-sm transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 ${busy ? "bg-black text-white line-through" : "bg-green-500 text-black"}`}
                 >
                   {time} {busy ? "Busy" : "Available"}
                 </button>
@@ -839,13 +867,13 @@ export default function TarotBookingWebsite() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={markNotWorking} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">
+            <button onClick={markNotWorking} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-black/80 active:translate-y-0 active:scale-95">
               Mark Day Not Working
             </button>
-            <button onClick={markDayBusy} className="rounded-full bg-red-500 px-4 py-2 text-xs font-semibold text-white">
+            <button onClick={markDayBusy} className="rounded-full bg-red-500 px-4 py-2 text-xs font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-red-400 active:translate-y-0 active:scale-95">
               Mark Entire Day Busy
             </button>
-            <button onClick={clearDay} className="rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white">
+            <button onClick={clearDay} className="rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/10 active:translate-y-0 active:scale-95">
               Clear Day
             </button>
           </div>

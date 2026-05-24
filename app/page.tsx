@@ -116,7 +116,7 @@ export default function TarotBookingWebsite() {
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
   const [paymentComplete, setPaymentComplete] = useState(WHATSAPP_TEST_MODE);
   const [showPayPalCheckout, setShowPayPalCheckout] = useState(false);
-  const [forumQuestions, setForumQuestions] = useState([]);
+  const [forumQuestions, setForumQuestions] = useState<any[]>([]);
 
   const [booking, setBooking] = useState({
     name: "",

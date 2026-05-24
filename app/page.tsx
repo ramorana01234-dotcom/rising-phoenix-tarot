@@ -779,7 +779,6 @@ export default function TarotBookingWebsite() {
           <div
             onDoubleClick={() => setShowAdmin((value) => !value)}
             className="flex cursor-pointer items-center gap-3 text-base font-bold md:text-lg"
-            title="Double click for admin"
           >
             <img
               src={LOGO_IMAGE}

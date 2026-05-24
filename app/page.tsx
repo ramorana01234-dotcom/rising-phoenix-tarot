@@ -107,7 +107,8 @@ export default function TarotBookingWebsite() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [availableSlots, setAvailableSlots] = useState<Record<string, string[]>>({});
   const [currentMonth, setCurrentMonth] = useState(new Date(START_DATE));
-  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  const [paidBookedSlots, setPaidBookedSlots] = useState<string[]>([]);
+  const [manualBusySlots, setManualBusySlots] = useState<string[]>([]);
   const [notWorkingDays, setNotWorkingDays] = useState<string[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminDate, setAdminDate] = useState(START_DATE);
@@ -152,7 +153,7 @@ export default function TarotBookingWebsite() {
 
     if (existingBooking) {
       alert("Sorry, this time has just been booked. Please choose another time.");
-      setBookedSlots((slots) => Array.from(new Set([...slots, `${booking.date}-${booking.time}`])));
+      setPaidBookedSlots((slots) => Array.from(new Set([...slots, `${booking.date}-${booking.time}`])));
       return false;
     }
 
@@ -169,7 +170,7 @@ export default function TarotBookingWebsite() {
       return false;
     }
 
-    setBookedSlots((slots) => Array.from(new Set([...slots, `${booking.date}-${booking.time}`])));
+    setPaidBookedSlots((slots) => Array.from(new Set([...slots, `${booking.date}-${booking.time}`])));
     return true;
   };
 
@@ -183,14 +184,82 @@ export default function TarotBookingWebsite() {
       }
 
       const savedSlots = (data || []).map((item) => `${item.date}-${item.time}`);
-      setBookedSlots(Array.from(new Set(savedSlots)));
+      setPaidBookedSlots(Array.from(new Set(savedSlots)));
+    };
+
+    const loadScheduleOverrides = async () => {
+      const { data, error } = await supabase
+        .from("schedule_overrides")
+        .select("date,available_times,busy_times,not_working");
+
+      if (error) {
+        console.error("Could not load schedule overrides:", error.message);
+        return;
+      }
+
+      const customAvailability: Record<string, string[]> = {};
+      const customBusySlots: string[] = [];
+      const customNotWorkingDays: string[] = [];
+
+      (data || []).forEach((item) => {
+        let availableTimes: string[] = DEFAULT_DAY_TIMES;
+        let busyTimes: string[] = [];
+
+        try {
+          availableTimes = item.available_times ? JSON.parse(item.available_times) : DEFAULT_DAY_TIMES;
+        } catch {
+          availableTimes = DEFAULT_DAY_TIMES;
+        }
+
+        try {
+          busyTimes = item.busy_times ? JSON.parse(item.busy_times) : [];
+        } catch {
+          busyTimes = [];
+        }
+
+        customAvailability[item.date] = availableTimes;
+        busyTimes.forEach((time) => customBusySlots.push(`${item.date}-${time}`));
+
+        if (item.not_working) {
+          customNotWorkingDays.push(item.date);
+        }
+      });
+
+      setAvailableSlots(customAvailability);
+      setManualBusySlots(Array.from(new Set(customBusySlots)));
+      setNotWorkingDays(Array.from(new Set(customNotWorkingDays)));
     };
 
     loadBookings();
+    loadScheduleOverrides();
+
     const refreshInterval = window.setInterval(loadBookings, 10000);
 
     return () => window.clearInterval(refreshInterval);
   }, []);
+
+  const saveScheduleOverride = async (
+    date: string,
+    availableTimes: string[],
+    busyTimes: string[],
+    notWorking: boolean
+  ) => {
+    const { error } = await supabase.from("schedule_overrides").upsert({
+      date,
+      available_times: JSON.stringify(availableTimes),
+      busy_times: JSON.stringify(busyTimes),
+      not_working: notWorking,
+    });
+
+    if (error) {
+      alert(`Could not save schedule change: ${error.message}`);
+    }
+  };
+
+  const bookedSlots = useMemo(
+    () => Array.from(new Set([...paidBookedSlots, ...manualBusySlots])),
+    [paidBookedSlots, manualBusySlots]
+  );
 
   const selectedService = SERVICES.find((service) => service.duration === booking.duration) || SERVICES[0];
   const selectedTimes = notWorkingDays.includes(booking.date)
@@ -241,34 +310,53 @@ export default function TarotBookingWebsite() {
     if (!adminDate || !adminTime) return;
     const currentTimes = availableSlots[adminDate] || DEFAULT_DAY_TIMES;
     const updatedTimes = Array.from(new Set([...currentTimes, adminTime])).sort();
+    const updatedBusySlots = manualBusySlots.filter((slot) => slot !== `${adminDate}-${adminTime}`);
+    const dayBusyTimes = updatedBusySlots
+      .filter((slot) => slot.startsWith(`${adminDate}-`))
+      .map((slot) => slot.replace(`${adminDate}-`, ""));
+
     setNotWorkingDays((days) => days.filter((day) => day !== adminDate));
     setAvailableSlots((slots) => ({ ...slots, [adminDate]: updatedTimes }));
-    setBookedSlots((slots) => slots.filter((slot) => slot !== `${adminDate}-${adminTime}`));
+    setManualBusySlots(updatedBusySlots);
+    saveScheduleOverride(adminDate, updatedTimes, dayBusyTimes, false);
   };
 
   const markSelectedTimeBusy = () => {
     if (!adminDate || !adminTime) return;
     const currentTimes = availableSlots[adminDate] || DEFAULT_DAY_TIMES;
     const updatedTimes = Array.from(new Set([...currentTimes, adminTime])).sort();
+    const updatedBusySlots = Array.from(new Set([...manualBusySlots, `${adminDate}-${adminTime}`]));
+    const dayBusyTimes = updatedBusySlots
+      .filter((slot) => slot.startsWith(`${adminDate}-`))
+      .map((slot) => slot.replace(`${adminDate}-`, ""));
+
     setNotWorkingDays((days) => days.filter((day) => day !== adminDate));
     setAvailableSlots((slots) => ({ ...slots, [adminDate]: updatedTimes }));
-    setBookedSlots((slots) => Array.from(new Set([...slots, `${adminDate}-${adminTime}`])));
+    setManualBusySlots(updatedBusySlots);
+    saveScheduleOverride(adminDate, updatedTimes, dayBusyTimes, false);
   };
 
   const markNotWorking = () => {
+    const updatedBusySlots = manualBusySlots.filter((slot) => !slot.startsWith(`${adminDate}-`));
     setNotWorkingDays((days) => Array.from(new Set([...days, adminDate])));
-    setBookedSlots((slots) => slots.filter((slot) => !slot.startsWith(`${adminDate}-`)));
+    setManualBusySlots(updatedBusySlots);
+    saveScheduleOverride(adminDate, [], [], true);
   };
 
   const markDayBusy = () => {
     const times = getDayTimes(adminDate);
     const daySlots = times.map((time) => `${adminDate}-${time}`);
-    setBookedSlots((slots) => Array.from(new Set([...slots, ...daySlots])));
+    const updatedBusySlots = Array.from(new Set([...manualBusySlots, ...daySlots]));
+    setManualBusySlots(updatedBusySlots);
+    saveScheduleOverride(adminDate, times, times, false);
   };
 
   const clearDay = () => {
-    setBookedSlots((slots) => slots.filter((slot) => !slot.startsWith(`${adminDate}-`)));
+    const updatedBusySlots = manualBusySlots.filter((slot) => !slot.startsWith(`${adminDate}-`));
+    setManualBusySlots(updatedBusySlots);
     setNotWorkingDays((days) => days.filter((day) => day !== adminDate));
+    setAvailableSlots((slots) => ({ ...slots, [adminDate]: DEFAULT_DAY_TIMES }));
+    saveScheduleOverride(adminDate, DEFAULT_DAY_TIMES, [], false);
   };
 
   const submitForumQuestion = () => {
@@ -693,13 +781,6 @@ export default function TarotBookingWebsite() {
               );
             })}
           </div>
-
-          <button
-            onClick={() => setShowAdmin((value) => !value)}
-            className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10"
-          >
-            Customize
-          </button>
         </div>
       </nav>
 

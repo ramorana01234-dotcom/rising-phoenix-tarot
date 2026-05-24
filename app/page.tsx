@@ -116,17 +116,7 @@ export default function TarotBookingWebsite() {
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
   const [paymentComplete, setPaymentComplete] = useState(WHATSAPP_TEST_MODE);
   const [showPayPalCheckout, setShowPayPalCheckout] = useState(false);
-  const [forumQuestions, setForumQuestions] = useState([
-    {
-      id: 1,
-      name: "Anonymous",
-      contact: "",
-      question: "I feel stuck and I need some guidance. Can tarot help me understand my next step?",
-      reply:
-        "Yes, tarot can help you reflect on your current energy and possible direction. You are welcome to book a reading, or leave a message if you simply need guidance.",
-      createdAt: "23/05/2026",
-    },
-  ]);
+  const [forumQuestions, setForumQuestions] = useState([]);
 
   const [booking, setBooking] = useState({
     name: "",

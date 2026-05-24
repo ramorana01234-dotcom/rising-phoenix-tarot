@@ -758,7 +758,11 @@ export default function TarotBookingWebsite() {
 
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#12091f]/85 px-4 py-3 backdrop-blur-2xl md:px-10">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 text-base font-bold md:text-lg">
+          <div
+            onDoubleClick={() => setShowAdmin((value) => !value)}
+            className="flex cursor-pointer items-center gap-3 text-base font-bold md:text-lg"
+            title="Double click for admin"
+          >
             <img
               src={LOGO_IMAGE}
               alt="Rising Phoenix Tarot Logo"
